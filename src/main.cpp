@@ -27,6 +27,14 @@ Texture2D bafBombTexture;
 Texture2D wallTexture;
 Texture2D destructibleWallTexture;
 
+// ЗВУКИ И МУЗЫКА
+Music backgroundMusic;
+bool musicEnabled = true;
+float musicVolume = 0.5f;  // Громкость музыки (0.0 - 1.0)
+float soundVolume = 0.7f;  // Громкость звуков
+
+// ЦВЕТ ДЛЯ РЕКОРДОВ
+Color RECORDS_COLOR = {133, 255, 0, 255};  // #85ff00 в формате RGBA
 
 enum GameState {
     MENU,
@@ -91,6 +99,62 @@ void AddHighScore(int score) {
         highScores.resize(10);
     }
     SaveHighScores();
+}
+
+// Функции для работы с музыкой
+void InitGameAudio() {
+    InitAudioDevice();  // Инициализируем аудио устройство
+    
+    // Загружаем фоновую музыку
+    backgroundMusic = LoadMusicStream("assets/music/background.mp3");
+    
+    if (backgroundMusic.ctxData != NULL) {
+        SetMusicVolume(backgroundMusic, musicVolume);
+        PlayMusicStream(backgroundMusic);
+        std::cout << "Background music loaded successfully!" << std::endl;
+    } else {
+        std::cout << "Failed to load background music!" << std::endl;
+    }
+}
+
+void UpdateGameMusic() {
+    if (!musicEnabled) return;
+    
+    UpdateMusicStream(backgroundMusic);  // Обновляем поток музыки
+    
+    // Если музыка закончилась, перезапускаем её (цикличность)
+    if (IsMusicStreamPlaying(backgroundMusic) && GetMusicTimePlayed(backgroundMusic) >= GetMusicTimeLength(backgroundMusic)) {
+        StopMusicStream(backgroundMusic);
+        PlayMusicStream(backgroundMusic);
+    }
+}
+
+void ToggleMusic() {
+    musicEnabled = !musicEnabled;
+    
+    if (musicEnabled) {
+        PlayMusicStream(backgroundMusic);
+        std::cout << "Music enabled" << std::endl;
+    } else {
+        StopMusicStream(backgroundMusic);
+        std::cout << "Music disabled" << std::endl;
+    }
+}
+
+void SetMusicVolumeLevel(float volume) {
+    musicVolume = volume;
+    if (musicVolume < 0.0f) musicVolume = 0.0f;
+    if (musicVolume > 1.0f) musicVolume = 1.0f;
+    
+    SetMusicVolume(backgroundMusic, musicVolume);
+}
+
+void UnloadGameAudio() {
+    if (backgroundMusic.ctxData != NULL) {
+        StopMusicStream(backgroundMusic);
+        UnloadMusicStream(backgroundMusic);
+    }
+    CloseAudioDevice();
 }
 
 bool IsValidSpawnPosition(float x, float y, Map* map) {
@@ -420,16 +484,18 @@ void GoToNextLevel(Bomber*& player, Map*& gameMap, std::vector<Mob*>& mobs,
 
 // Функция загрузки текстур
 void LoadGameTextures() {
-    // Загружаем текстуры из текущей директории или папки assets
-    bomberTexture = LoadTexture("bomber.png");
-    mobTexture = LoadTexture("mob.png");
-    bombTexture = LoadTexture("bomb.png");
-    boomTexture = LoadTexture("boom.png");
-    bafExplosionTexture = LoadTexture("rad_b.png");      // Радиус взрыва
-    bafSpeedTexture = LoadTexture("speed_b.png");        // Скорость
-    bafBombTexture = LoadTexture("caint_b.png");         // Количество бомб
-    wallTexture = LoadTexture("vol_n.png");              // Неразрушаемые стены
-    destructibleWallTexture = LoadTexture("vol_r.png");  // Разрушаемые стены
+    // Загружаем текстуры из папки assets
+    std::string basePath = "assets/";
+    
+    bomberTexture = LoadTexture((basePath + "bomber.png").c_str());
+    mobTexture = LoadTexture((basePath + "mob.png").c_str());
+    bombTexture = LoadTexture((basePath + "bomb.png").c_str());
+    boomTexture = LoadTexture((basePath + "boom.png").c_str());
+    bafExplosionTexture = LoadTexture((basePath + "rad_b.png").c_str());
+    bafSpeedTexture = LoadTexture((basePath + "speed_b.png").c_str());
+    bafBombTexture = LoadTexture((basePath + "caunt_b.png").c_str());
+    wallTexture = LoadTexture((basePath + "vol_n.png").c_str());
+    destructibleWallTexture = LoadTexture((basePath + "vol_r.png").c_str());
     
     // Проверяем загрузку текстур
     if (bomberTexture.id == 0) std::cout << "Failed to load bomber.png" << std::endl;
@@ -438,7 +504,7 @@ void LoadGameTextures() {
     if (boomTexture.id == 0) std::cout << "Failed to load boom.png" << std::endl;
     if (bafExplosionTexture.id == 0) std::cout << "Failed to load rad_b.png" << std::endl;
     if (bafSpeedTexture.id == 0) std::cout << "Failed to load speed_b.png" << std::endl;
-    if (bafBombTexture.id == 0) std::cout << "Failed to load caint_b.png" << std::endl;
+    if (bafBombTexture.id == 0) std::cout << "Failed to load caunt_b.png" << std::endl;
     if (wallTexture.id == 0) std::cout << "Failed to load vol_n.png" << std::endl;
     if (destructibleWallTexture.id == 0) std::cout << "Failed to load vol_r.png" << std::endl;
 }
@@ -470,17 +536,20 @@ int main()
     
     // Загружаем текстуры
     LoadGameTextures();
-
+    
+    // Инициализируем аудио и музыку
+    InitGameAudio();
+    
     // Загружаем рекорды при старте
     LoadHighScores();
-
+    
     GameState currentState = MENU;
-
+    
     Button playButton(710, 500, 500, 120, "PLAY");
     Button settingsButton(710, 700, 500, 120, "SETTINGS");
     Button recordsButton(710, 900, 500, 120, "RECORDS");
     Button menuButton(710, 700, 500, 120, "BACK TO MENU");
-
+    
     Bomber* player = nullptr;
     Map* gameMap = nullptr;
     std::vector<Mob*> mobs;
@@ -494,9 +563,18 @@ int main()
     // Переменные для отслеживания счёта
     int levelStartLives = 3;
     currentLevelScore = 0;
+    
+    // Создаем кнопки для настроек
+    Rectangle musicToggleRect = {710, 400, 500, 80};
+    Rectangle volumeUpRect = {710, 500, 240, 80};
+    Rectangle volumeDownRect = {970, 500, 240, 80};
+    Rectangle backRect = {710, 700, 500, 80};
 
     while (!WindowShouldClose())
     {
+        // ОБНОВЛЯЕМ МУЗЫКУ КАЖДЫЙ КАДР
+        UpdateGameMusic();
+        
         if (IsKeyPressed(KEY_ENTER)) {
             if (currentState == MENU) {
                 break;
@@ -731,6 +809,26 @@ int main()
                 break;
                 
             case SETTINGS:
+                // Обработка кликов в настройках
+                {
+                    Vector2 mousePoint = GetMousePosition();
+                    bool musicHovered = CheckCollisionPointRec(mousePoint, musicToggleRect);
+                    bool volumeUpHovered = CheckCollisionPointRec(mousePoint, volumeUpRect);
+                    bool volumeDownHovered = CheckCollisionPointRec(mousePoint, volumeDownRect);
+                    bool backHovered = CheckCollisionPointRec(mousePoint, backRect);
+                    
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        if (musicHovered) {
+                            ToggleMusic();
+                        } else if (volumeUpHovered) {
+                            SetMusicVolumeLevel(musicVolume + 0.1f);
+                        } else if (volumeDownHovered) {
+                            SetMusicVolumeLevel(musicVolume - 0.1f);
+                        } else if (backHovered) {
+                            currentState = MENU;
+                        }
+                    }
+                }
                 break;
                 
             case RECORDS:
@@ -810,7 +908,7 @@ int main()
                 int titleWidth = MeasureText(titleText, 120);
                 DrawText(titleText, screenCenterX - titleWidth/2, 200, 120, GREEN);
                 
-                // Центрируем кнопки (они уже центрированы по кнопкам, но можно выровнять текст)
+                // Центрируем кнопки
                 playButton.Draw();
                 settingsButton.Draw();
                 recordsButton.Draw();
@@ -915,32 +1013,56 @@ int main()
                 int titleWidth = MeasureText(titleText, 120);
                 DrawText(titleText, screenCenterX - titleWidth/2, 200, 120, YELLOW);
                 
-                // Центрируем сообщение
-                const char* devText = "Settings screen is under development";
-                int devTextWidth = MeasureText(devText, 60);
-                DrawText(devText, screenCenterX - devTextWidth/2, 600, 60, WHITE);
+                // Кнопка музыки
+                DrawRectangleRec(musicToggleRect, musicEnabled ? GREEN : RED);
+                DrawRectangleLinesEx(musicToggleRect, 3, DARKGRAY);
+                std::string musicText = musicEnabled ? "MUSIC: ON" : "MUSIC: OFF";
+                int musicTextWidth = MeasureText(musicText.c_str(), 40);
+                DrawText(musicText.c_str(), 
+                         musicToggleRect.x + (musicToggleRect.width - musicTextWidth)/2,
+                         musicToggleRect.y + 20, 40, WHITE);
                 
-                // Центрируем подсказку
-                const char* backText = "ENTER - Back to Menu";
-                int backTextWidth = MeasureText(backText, 40);
-                DrawText(backText, screenCenterX - backTextWidth/2, 1000, 40, GRAY);
+                // Кнопки громкости
+                DrawRectangleRec(volumeUpRect, BLUE);
+                DrawRectangleLinesEx(volumeUpRect, 3, DARKBLUE);
+                DrawText("VOLUME +", volumeUpRect.x + 50, volumeUpRect.y + 25, 40, WHITE);
+                
+                DrawRectangleRec(volumeDownRect, BLUE);
+                DrawRectangleLinesEx(volumeDownRect, 3, DARKBLUE);
+                DrawText("VOLUME -", volumeDownRect.x + 50, volumeDownRect.y + 25, 40, WHITE);
+                
+                // Ползунок громкости
+                DrawRectangle(710, 600, 500, 20, GRAY);
+                DrawRectangle(710, 600, 500 * musicVolume, 20, GREEN);
+                DrawText(TextFormat("Volume: %d%%", (int)(musicVolume * 100)), 
+                         710, 630, 30, WHITE);
+                
+                // Кнопка назад
+                DrawRectangleRec(backRect, BLUE);
+                DrawRectangleLinesEx(backRect, 3, DARKBLUE);
+                DrawText("BACK TO MENU", backRect.x + 100, backRect.y + 25, 40, WHITE);
+                
+                // Подсказка
+                const char* backText = "Click buttons to change settings";
+                int backTextWidth = MeasureText(backText, 30);
+                DrawText(backText, screenCenterX - backTextWidth/2, 850, 30, GRAY);
                 
                 break;
             }
                 
             case RECORDS:
-{
+            {
                 int screenCenterX = screenWidth / 2;
     
-                // Центрируем заголовок
+                // Центрируем заголовок - используем новый цвет
                 const char* titleText = "HIGH SCORE";
                 int titleWidth = MeasureText(titleText, 80);
-                DrawText(titleText, screenCenterX - titleWidth/2, 200, 80, YELLOW);
+                DrawText(titleText, screenCenterX - titleWidth/2, 200, 80, RECORDS_COLOR);
     
-                // Центрируем подзаголовок
+                // Центрируем подзаголовок - тоже новый цвет
                 const char* subtitleText = "Best Result";
                 int subtitleWidth = MeasureText(subtitleText, 50);
-                DrawText(subtitleText, screenCenterX - subtitleWidth/2, 300, 50, ORANGE);
+                DrawText(subtitleText, screenCenterX - subtitleWidth/2, 300, 50, RECORDS_COLOR);
     
                 if (!highScores.empty()) {
                     // Отображаем лучший результат
@@ -950,15 +1072,15 @@ int main()
                     int boxWidth = 400;
                     int boxHeight = 100;
                     DrawRectangle(screenCenterX - boxWidth/2 - 10, yPos - 10, 
-                                boxWidth + 20, boxHeight + 20, Color{139, 69, 19, 255}); // Коричневый
+                                boxWidth + 20, boxHeight + 20, Color{139, 69, 19, 255});
                     DrawRectangle(screenCenterX - boxWidth/2, yPos, 
-                                boxWidth, boxHeight, Color{255, 215, 0, 200}); // Золотой
+                                boxWidth, boxHeight, Color{255, 215, 0, 200});
         
-                    // Лучший результат
+                    // Лучший результат - используем новый цвет для текста
                     char scoreText[50];
                     sprintf(scoreText, "TOP SCORE: %d", highScores[0]);
                     int textWidth = MeasureText(scoreText, 50);
-                    DrawText(scoreText, screenCenterX - textWidth/2, yPos + 25, 50, BLACK);
+                    DrawText(scoreText, screenCenterX - textWidth/2, yPos + 25, 50, RECORDS_COLOR);
         
                     // Если есть текущий счёт, показываем его для сравнения
                     if (totalScore > 0) {
@@ -967,7 +1089,7 @@ int main()
                         char currentText[50];
                         sprintf(currentText, "Your Score: %d", totalScore);
                         int currentWidth = MeasureText(currentText, 40);
-                        DrawText(currentText, screenCenterX - currentWidth/2, yPos, 40, WHITE);
+                        DrawText(currentText, screenCenterX - currentWidth/2, yPos, 40, RECORDS_COLOR);
             
                         // Показываем разницу с лучшим результатом
                         if (totalScore < highScores[0]) {
@@ -975,28 +1097,41 @@ int main()
                             char diffText[50];
                             sprintf(diffText, "Need %d more points", difference);
                             int diffWidth = MeasureText(diffText, 30);
-                            DrawText(diffText, screenCenterX - diffWidth/2, yPos + 50, 30, YELLOW);
+                            DrawText(diffText, screenCenterX - diffWidth/2, yPos + 50, 30, RECORDS_COLOR);
                         } else if (totalScore == highScores[0]) {
                             const char* tieText = "Tied with best!";
                             int tieWidth = MeasureText(tieText, 30);
-                            DrawText(tieText, screenCenterX - tieWidth/2, yPos + 50, 30, GREEN);
+                            DrawText(tieText, screenCenterX - tieWidth/2, yPos + 50, 30, RECORDS_COLOR);
                         } else {
                             const char* newBestText = "NEW BEST!";
                             int newBestWidth = MeasureText(newBestText, 30);
                             DrawText(newBestText, screenCenterX - newBestWidth/2, yPos + 50, 30, GOLD);
                         }
                     }
+        
+                    // Таблица всех рекордов
+                    yPos += 150;
+                    DrawText("All Scores:", screenCenterX - 100, yPos, 40, RECORDS_COLOR);
+                    yPos += 50;
+        
+                    for (size_t i = 0; i < highScores.size() && i < 5; i++) {
+                        char scoreLine[50];
+                        sprintf(scoreLine, "%zu. %d points", i + 1, highScores[i]);
+                        int lineWidth = MeasureText(scoreLine, 30);
+                        DrawText(scoreLine, screenCenterX - lineWidth/2, yPos, 30, RECORDS_COLOR);
+                        yPos += 35;
+                    }
                 } else {
                     // Если нет рекордов
                     const char* noScoresText = "No scores yet!";
                     int noScoresWidth = MeasureText(noScoresText, 50);
-                    DrawText(noScoresText, screenCenterX - noScoresWidth/2, 450, 50, WHITE);
+                    DrawText(noScoresText, screenCenterX - noScoresWidth/2, 450, 50, RECORDS_COLOR);
                 }
     
                 // Центрируем подсказку
                 const char* backText = "Press ENTER to return to menu";
                 int backTextWidth = MeasureText(backText, 30);
-                DrawText(backText, screenCenterX - backTextWidth/2, 1000, 30, GRAY);
+                DrawText(backText, screenCenterX - backTextWidth/2, 1000, 30, RECORDS_COLOR);
     
                 break;
             }
@@ -1010,7 +1145,7 @@ int main()
                 
                 // Проверяем, побил ли игрок рекорд
                 if (!highScores.empty() && totalScore >= highScores[0]) {
-                    DrawText("NEW HIGH SCORE!", 660, 670, 50, Color{255, 215, 0, 255}); // Золотой цвет
+                    DrawText("NEW HIGH SCORE!", 660, 670, 50, Color{255, 215, 0, 255});
                 }
                 
                 if (player != nullptr) {
@@ -1043,6 +1178,7 @@ int main()
     }
 
     UnloadGameTextures();
+    UnloadGameAudio();
     
     if (player != nullptr) {
         delete player;

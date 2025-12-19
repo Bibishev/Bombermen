@@ -12,6 +12,8 @@ SRC_FILES = \
 
 CFLAGS = -Wall -std=c++11 -O2 -g
 INCLUDE_PATHS = -I"C:/raylib/raylib/src" -I"src" -I"src/bomb" -I"src/bomber" -I"src/mob" -I"src/baf" -I"src/wiu" -I"src/map"
+
+# УБРАЛИ -lopenal32 - raylib уже включает аудио поддержку
 LDLIBS = -L"C:/raylib/raylib/src" -lraylib -lopengl32 -lgdi32 -lwinmm -lm
 
 all:
@@ -21,6 +23,7 @@ run: all
 	./$(PROJECT_NAME)
 
 clean:
-	del $(PROJECT_NAME).exe
+	del $(PROJECT_NAME).exe 2>nul || true
+	del *.o 2>nul || true
 
 .PHONY: all clean run
